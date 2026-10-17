@@ -65,14 +65,14 @@ class MainActivity : Activity() {
 
     private fun loadPrice() {
         priceText.text = "در حال دریافت قیمت..."
-        statusText.text = "در حال اتصال به نوبیتکس"
+        statusText.text = "در حال اتصال به بازار نوبیتکس"
 
         executor.execute {
             var connection: HttpURLConnection? = null
 
             try {
                 val address =
-                    "https://api.nobitex.ir/market/stats?srcCurrency=usdt&dstCurrency=rls"
+                    "https://apiv2.nobitex.ir/v3/orderbook/USDTIRT"
 
                 connection =
                     URL(address).openConnection() as HttpURLConnection
@@ -80,45 +80,62 @@ class MainActivity : Activity() {
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 15000
                 connection.readTimeout = 15000
+                connection.setRequestProperty(
+                    "User-Agent",
+                    "TetherTop Android"
+                )
 
                 val responseCode = connection.responseCode
 
-                if (responseCode != 200) {
-                    throw Exception("HTTP error: $responseCode")
-                }
+                val responseStream =
+                    if (responseCode in 200..299) {
+                        connection.inputStream
+                    } else {
+                        connection.errorStream
+                    }
 
-                val response = connection.inputStream
-                    .bufferedReader()
-                    .use { it.readText() }
+                val response = responseStream
+                    ?.bufferedReader()
+                    ?.use { it.readText() }
+                    ?: throw Exception("پاسخ سرور خالی است")
+
+                if (responseCode !in 200..299) {
+                    throw Exception(
+                        "خطای سرور HTTP $responseCode: " +
+                            response.take(150)
+                    )
+                }
 
                 val result = JSONObject(response)
 
-                if (result.optString("status") != "ok") {
-                    throw Exception("Market unavailable")
+                val rawPrice = result.optString("lastTradePrice", "")
+
+                if (rawPrice.isBlank() || rawPrice == "null") {
+                    throw Exception(
+                        "قیمت در پاسخ سرور پیدا نشد: " +
+                            response.take(180)
+                    )
                 }
 
-                val stats = result
-                    .getJSONObject("stats")
-                    .getJSONObject("usdt-rls")
-
-                val rialPrice =
-                    stats.getString("latest").toDouble()
+                val rialPrice = rawPrice.toDoubleOrNull()
+                    ?: throw Exception("قیمت دریافتی معتبر نیست: $rawPrice")
 
                 val tomanPrice = rialPrice / 10.0
-
                 val formatter = DecimalFormat("#,##0.##")
                 val formattedPrice = formatter.format(tomanPrice)
 
                 runOnUiThread {
                     priceText.text = "$formattedPrice تومان"
-                    statusText.text = "قیمت آخرین معامله در نوبیتکس"
+                    statusText.text = "آخرین معامله تتر در نوبیتکس"
                 }
 
             } catch (e: Exception) {
                 runOnUiThread {
-                    priceText.text = "دریافت قیمت ناموفق بود"
+                    priceText.text =
+                        "خطا: ${e.javaClass.simpleName}"
+
                     statusText.text =
-                        "اینترنت یا دسترسی به بازار را بررسی کن"
+                        e.message ?: "خطای نامشخص"
                 }
             } finally {
                 connection?.disconnect()
