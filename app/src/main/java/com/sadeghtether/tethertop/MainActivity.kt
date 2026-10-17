@@ -16,7 +16,7 @@ class MainActivity : Activity() {
 
     private val executor = Executors.newSingleThreadExecutor()
     private lateinit var priceText: TextView
-    private lateinit var updateText: TextView
+    private lateinit var statusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,11 +40,11 @@ class MainActivity : Activity() {
         priceText.gravity = Gravity.CENTER
         priceText.setPadding(0, 30, 0, 20)
 
-        updateText = TextView(this)
-        updateText.text = "قیمت بازار ایران"
-        updateText.textSize = 16f
-        updateText.setTextColor(Color.LTGRAY)
-        updateText.gravity = Gravity.CENTER
+        statusText = TextView(this)
+        statusText.text = "بازار تتر ایران"
+        statusText.textSize = 16f
+        statusText.setTextColor(Color.LTGRAY)
+        statusText.gravity = Gravity.CENTER
 
         val refresh = TextView(this)
         refresh.text = "به‌روزرسانی قیمت"
@@ -56,7 +56,7 @@ class MainActivity : Activity() {
 
         layout.addView(title)
         layout.addView(priceText)
-        layout.addView(updateText)
+        layout.addView(statusText)
         layout.addView(refresh)
 
         setContentView(layout)
@@ -65,30 +65,26 @@ class MainActivity : Activity() {
 
     private fun loadPrice() {
         priceText.text = "در حال دریافت قیمت..."
-        updateText.text = "اتصال به بازار نوبیتکس"
+        statusText.text = "در حال اتصال به نوبیتکس"
 
         executor.execute {
             var connection: HttpURLConnection? = null
 
             try {
-                val address = "https://api.nobitex.ir/market/stats"
+                val address =
+                    "https://api.nobitex.ir/market/stats?srcCurrency=usdt&dstCurrency=rls"
 
-                connection = URL(address).openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
+                connection =
+                    URL(address).openConnection() as HttpURLConnection
+
+                connection.requestMethod = "GET"
                 connection.connectTimeout = 15000
                 connection.readTimeout = 15000
-                connection.doOutput = true
-                connection.setRequestProperty(
-                    "Content-Type",
-                    "application/json"
-                )
 
-                val request = JSONObject()
-                    .put("srcCurrency", "usdt")
-                    .put("dstCurrency", "rls")
+                val responseCode = connection.responseCode
 
-                connection.outputStream.use { output ->
-                    output.write(request.toString().toByteArray(Charsets.UTF_8))
+                if (responseCode != 200) {
+                    throw Exception("HTTP error: $responseCode")
                 }
 
                 val response = connection.inputStream
@@ -98,13 +94,16 @@ class MainActivity : Activity() {
                 val result = JSONObject(response)
 
                 if (result.optString("status") != "ok") {
-                    throw Exception("Market API error")
+                    throw Exception("Market unavailable")
                 }
 
-                val stats = result.getJSONObject("stats")
+                val stats = result
+                    .getJSONObject("stats")
                     .getJSONObject("usdt-rls")
 
-                val rialPrice = stats.getString("latest").toDouble()
+                val rialPrice =
+                    stats.getString("latest").toDouble()
+
                 val tomanPrice = rialPrice / 10.0
 
                 val formatter = DecimalFormat("#,##0.##")
@@ -112,13 +111,14 @@ class MainActivity : Activity() {
 
                 runOnUiThread {
                     priceText.text = "$formattedPrice تومان"
-                    updateText.text = "قیمت آخرین معامله در نوبیتکس"
+                    statusText.text = "قیمت آخرین معامله در نوبیتکس"
                 }
 
             } catch (e: Exception) {
                 runOnUiThread {
                     priceText.text = "دریافت قیمت ناموفق بود"
-                    updateText.text = "اینترنت را بررسی کن و دوباره تلاش کن"
+                    statusText.text =
+                        "اینترنت یا دسترسی به بازار را بررسی کن"
                 }
             } finally {
                 connection?.disconnect()
