@@ -74,4 +74,19 @@ class MainActivity : Activity() {
                     .getDouble("usd")
 
                 runOnUiThread {
-                    priceText.text = "قیمت تتر: $
+                    priceText.text = "قیمت تتر: $${price}"
+                }
+
+            } catch (e: Exception) {
+                runOnUiThread {
+                    priceText.text = "خطا در دریافت قیمت\nدوباره تلاش کن"
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        executor.shutdownNow()
+        super.onDestroy()
+    }
+}
